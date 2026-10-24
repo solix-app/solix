@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SOLIX — Sign in</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#080b12;--panel:#101621;--line:#222d3f;--text:#f2f5fb;--muted:#8d9ab0;--blue:#087cff;--red:#ff778b;--green:#59d6a0}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:18px;background:radial-gradient(ellipse at 80% -15%,#20284c 0,transparent 42%),var(--bg);font-family:Inter,system-ui,sans-serif;color:var(--text)}
+.box{width:min(440px,100%);background:linear-gradient(150deg,#121a28,#0e141e);border:1px solid var(--line);border-radius:20px;padding:26px}
+.brand{font-weight:800;letter-spacing:.18em;font-size:22px;margin-bottom:18px}
+.tabs{display:flex;gap:6px;background:#0a1019;border-radius:12px;padding:4px;margin-bottom:18px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:10px;border-radius:9px;font:inherit;font-weight:600;cursor:pointer}
+.tabs button.active{background:#192238;color:#dce3ff}
+label{display:block;font-size:13px;color:#b6c0d2;margin:14px 0 6px}
+input{width:100%;background:#0a1019;border:1px solid #2b374b;border-radius:10px;padding:12px;color:var(--text);font:inherit;outline:none}
+input:focus{border-color:#8b9cff}
+.btn{width:100%;margin-top:16px;border:1px solid #34415a;background:#1b2435;color:var(--text);border-radius:11px;padding:12px;font:inherit;font-weight:600;cursor:pointer}
+.btn.primary{background:#a5b0ff;color:#101528;border-color:transparent}
+.btn:disabled{opacity:.6;cursor:wait}
+.link{background:none;border:0;color:#7fc4ff;cursor:pointer;font:inherit;font-size:13px;padding:0;margin-top:12px}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:16px 0 0}.or:before,.or:after{content:"";flex:1;height:1px;background:var(--line)}
+.msg{font-size:13px;line-height:1.5;margin-top:14px;padding:10px 12px;border-radius:10px;display:none}
+.msg.err{display:block;color:#ffc2cb;background:#2a1419;border:1px solid #5a2630}
+.msg.ok{display:block;color:#bff0da;background:#10241c;border:1px solid #1f5a42}
+.hint{font-size:12px;color:var(--muted);margin-top:6px}
+.hidden{display:none!important}
+</style></head><body>
+<div class="box">
+  <div class="brand">SOLIX</div>
+
+  <!-- Main auth panel -->
+  <div id="authPanel">
+    <div class="tabs"><button id="tabLogin" class="active" type="button">Log in</button><button id="tabSignup" type="button">Sign up</button></div>
+
+    <form id="loginForm" novalidate>
+      <label for="loginId">Email or username</label>
+      <input id="loginId" autocomplete="username" required>
+      <label for="loginPw">Password</label>
+      <input id="loginPw" type="password" autocomplete="current-password" required>
+      <button class="btn primary" type="submit">Log in</button>
+      <button class="link" type="button" id="forgot">Forgot password?</button>
+    </form>
+
+    <form id="signupForm" class="hidden" novalidate>
+      <label for="suUser">Username</label>
+      <input id="suUser" maxlength="24" autocomplete="username" placeholder="solix_trader" required>
+      <div class="hint">3–24 letters, numbers or underscores.</div>
+      <label for="suEmail">Email</label>
+      <input id="suEmail" type="email" autocomplete="email" required>
+      <label for="suPw">Password</label>
+      <input id="suPw" type="password" autocomplete="new-password" minlength="8" required>
+      <div class="hint">At least 8 characters.</div>
+      <button class="btn primary" type="submit">Create account</button>
+    </form>
+
+    <div class="or">or</div>
+    <button class="btn" type="button" id="googleBtn">Continue with Google</button>
+  </div>
+
+  <!-- Google users pick a username on first sign-in -->
+  <form id="usernamePanel" class="hidden" novalidate>
+    <p style="margin:0 0 4px;font-weight:600">Choose your username</p>
+    <p class="hint" style="margin:0">One last step to finish setting up your account.</p>
+    <label for="gUser">Username</label>
+    <input id="gUser" maxlength="24" placeholder="solix_trader" required>
+    <button class="btn primary" type="submit">Save username</button>
+  </form>
+
+  <!-- Email verification gate -->
+  <div id="verifyPanel" class="hidden">
+    <p style="margin:0 0 6px;font-weight:600">Verify your email</p>
+    <p class="hint" style="margin:0">We sent a link to <b id="verifyEmail"></b>. Open it, then come back and continue.</p>
+    <button class="btn primary" id="verifyDone" type="button">I've verified</button>
+    <button class="btn" id="verifyResend" type="button">Resend email</button>
+    <button class="link" id="verifyOut" type="button">Use a different account</button>
+  </div>
+
+  <div id="msg" class="msg" role="status"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
+import {
+  getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signInWithPopup, GoogleAuthProvider, sendEmailVerification, sendPasswordResetEmail,
+  updateProfile, signOut, deleteUser
+} from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, runTransaction, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey: "AIzaSyBZSPQbFG-82_uTw_lOrHjqR0-e9HyLcMs",
+  authDomain: "solix-6f8a3.firebaseapp.com",
+  projectId: "solix-6f8a3",
+  storageBucket: "solix-6f8a3.firebasestorage.app",
+  messagingSenderId: "2091737258",
+  appId: "1:2091737258:web:4686edb0a3db0f5a9370d3",
+  measurementId: "G-JPD1XSTZJL"
+});
+const auth = getAuth(app), db = getFirestore(app);
+const DASHBOARD = "solix-coingecko-live-prices.html"; // change if you rename the dashboard file
+const USERNAME_RE = /^[a-z0-9_]{3,24}$/;
+const $ = id => document.getElementById(id);
+
+const show = (el, on) => el.classList.toggle("hidden", !on);
+function say(text, ok = false) { const m = $("msg"); m.textContent = text; m.className = "msg " + (ok ? "ok" : "err"); }
+function clearMsg() { $("msg").className = "msg"; }
+function busy(form, on) { form.querySelectorAll("button").forEach(b => b.disabled = on); }
+
+function friendly(e) {
+  const map = {
+    "auth/email-already-in-use": "That email already has an account. Try logging in.",
+    "auth/invalid-email": "That email address doesn't look right.",
+    "auth/weak-password": "Password is too weak. Use at least 8 characters.",
+    "auth/invalid-credential": "Wrong email/username or password.",
+    "auth/user-not-found": "Wrong email/username or password.",
+    "auth/wrong-password": "Wrong email/username or password.",
+    "auth/too-many-requests": "Too many attempts. Wait a bit and try again.",
+    "auth/popup-closed-by-user": "Google sign-in was closed before finishing.",
+    "auth/network-request-failed": "Network problem. Check your connection.",
+    "username-taken": "That username is already taken.",
+    "permission-denied": "Database permission denied. Check your Firestore rules."
+  };
+  return map[e.code] || map[e.message] || (e.message || "Something went wrong.");
+}
+
+// ---- Tabs
+function tab(which) {
+  clearMsg();
+  $("tabLogin").classList.toggle("active", which === "login");
+  $("tabSignup").classList.toggle("active", which === "signup");
+  show($("loginForm"), which === "login"); show($("signupForm"), which === "signup");
+}
+$("tabLogin").onclick = () => tab("login");
+$("tabSignup").onclick = () => tab("signup");
+
+// ---- Username helpers
+const clean = v => v.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
+["suUser", "gUser"].forEach(id => $(id).addEventListener("input", e => e.target.value = clean(e.target.value)));
+
+async function usernameFree(u) { return !(await getDoc(doc(db, "usernames", u))).exists(); }
+
+// Atomically reserve the username and create the profile. Throws "username-taken" if it lost a race.
+async function claimUsername(user, username) {
+  await runTransaction(db, async tx => {
+    const ref = doc(db, "usernames", username);
+    if ((await tx.get(ref)).exists()) throw new Error("username-taken");
+    tx.set(ref, { uid: user.uid, email: user.email });
+    tx.set(doc(db, "users", user.uid), { username, email: user.email, createdAt: serverTimestamp() });
+  });
+  await updateProfile(user, { displayName: username });
+}
+
+// ---- Sign up
+$("signupForm").addEventListener("submit", async e => {
+  e.preventDefault(); clearMsg();
+  const username = clean($("suUser").value), email = $("suEmail").value.trim(), pw = $("suPw").value;
+  if (!USERNAME_RE.test(username)) return say("Username must be 3–24 letters, numbers or underscores.");
+  if (pw.length < 8) return say("Password must be at least 8 characters.");
+  const form = e.target; busy(form, true);
+  let cred;
+  try {
+    if (!(await usernameFree(username))) throw new Error("username-taken");
+    cred = await createUserWithEmailAndPassword(auth, email, pw);
+    try { await claimUsername(cred.user, username); }
+    catch (err) { await deleteUser(cred.user).catch(() => {}); throw err; } // roll back if the name was just taken
+    await sendEmailVerification(cred.user);
+    say("Account created. Check your email to verify.", true);
+  } catch (err) { say(friendly(err)); }
+  finally { busy(form, false); }
+});
+
+// ---- Log in (email OR username)
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault(); clearMsg();
+  let id = $("loginId").value.trim(); const pw = $("loginPw").value;
+  if (!id || !pw) return say("Enter your email or username and password.");
+  const form = e.target; busy(form, true);
+  try {
+    if (!id.includes("@")) {
+      const snap = await getDoc(doc(db, "usernames", id.toLowerCase()));
+      if (!snap.exists()) throw { code: "auth/invalid-credential" }; // same message as a bad password
+      id = snap.data().email;
+    }
+    await signInWithEmailAndPassword(auth, id, pw);
+  } catch (err) { say(friendly(err)); }
+  finally { busy(form, false); }
+});
+
+// ---- Google
+$("googleBtn").onclick = async () => {
+  clearMsg();
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (err) { say(friendly(err)); }
+};
+
+// Google users without a profile choose a username
+$("usernamePanel").addEventListener("submit", async e => {
+  e.preventDefault(); clearMsg();
+  const username = clean($("gUser").value);
+  if (!USERNAME_RE.test(username)) return say("Username must be 3–24 letters, numbers or underscores.");
+  const form = e.target; busy(form, true);
+  try { await claimUsername(auth.currentUser, username); go(); }
+  catch (err) { say(friendly(err)); }
+  finally { busy(form, false); }
+});
+
+// ---- Password reset
+$("forgot").onclick = async () => {
+  clearMsg();
+  const v = $("loginId").value.trim();
+  if (!v.includes("@")) return say("Type your email address in the first field, then click Forgot password.");
+  try { await sendPasswordResetEmail(auth, v); say("If that email has an account, a reset link is on its way.", true); }
+  catch (err) { say(friendly(err)); }
+};
+
+// ---- Verification panel
+$("verifyDone").onclick = async () => { await auth.currentUser.reload(); route(auth.currentUser); if (!auth.currentUser.emailVerified) say("Not verified yet. Click the link in your email first."); };
+$("verifyResend").onclick = async () => { try { await sendEmailVerification(auth.currentUser); say("Verification email sent again.", true); } catch (err) { say(friendly(err)); } };
+$("verifyOut").onclick = () => signOut(auth);
+
+// ---- Routing based on auth state
+const go = () => { location.href = DASHBOARD; };
+async function route(user) {
+  clearMsg();
+  show($("authPanel"), !user); show($("usernamePanel"), false); show($("verifyPanel"), false);
+  if (!user) return;
+  const isPasswordUser = user.providerData.some(p => p.providerId === "password");
+  if (isPasswordUser && !user.emailVerified) { $("verifyEmail").textContent = user.email; return show($("verifyPanel"), true); }
+  const profile = await getDoc(doc(db, "users", user.uid));
+  if (!profile.exists()) return show($("usernamePanel"), true);
+  go();
+}
+onAuthStateChanged(auth, route);
+</script>
+</body></html>
