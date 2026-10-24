@@ -223,11 +223,18 @@ async function route(user) {
   clearMsg();
   show($("authPanel"), !user); show($("usernamePanel"), false); show($("verifyPanel"), false);
   if (!user) return;
-  const isPasswordUser = user.providerData.some(p => p.providerId === "password");
-  if (isPasswordUser && !user.emailVerified) { $("verifyEmail").textContent = user.email; return show($("verifyPanel"), true); }
-  const profile = await getDoc(doc(db, "users", user.uid));
-  if (!profile.exists()) return show($("usernamePanel"), true);
-  go();
+  try {
+    const isPasswordUser = user.providerData.some(p => p.providerId === "password");
+    if (isPasswordUser && !user.emailVerified) { $("verifyEmail").textContent = user.email; return show($("verifyPanel"), true); }
+    const profile = await getDoc(doc(db, "users", user.uid));
+    if (!profile.exists()) return show($("usernamePanel"), true);
+    go();
+  } catch (err) {
+    console.error("Profile check failed:", err);
+    show($("authPanel"), true);
+    say("Signed in, but loading your profile failed: " + (err.code || err.message) +
+        ". This is usually Firestore not being set up (database not created or rules not published).");
+  }
 }
 onAuthStateChanged(auth, route);
 </script>
