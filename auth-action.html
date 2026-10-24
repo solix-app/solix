@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SOLIX — Account action</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;--bg:#080b12;--line:#222d3f;--text:#f2f5fb;--muted:#8d9ab0}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:18px;background:radial-gradient(ellipse at 80% -15%,#20284c 0,transparent 42%),var(--bg);font-family:Inter,system-ui,sans-serif;color:var(--text)}
+.box{width:min(440px,100%);background:linear-gradient(150deg,#121a28,#0e141e);border:1px solid var(--line);border-radius:20px;padding:26px}
+.brand{font-weight:800;letter-spacing:.18em;font-size:22px;margin-bottom:18px}
+h2{margin:0 0 8px;font-size:20px}p{color:var(--muted);line-height:1.6;margin:0}
+label{display:block;font-size:13px;color:#b6c0d2;margin:16px 0 6px}
+input{width:100%;background:#0a1019;border:1px solid #2b374b;border-radius:10px;padding:12px;color:var(--text);font:inherit;outline:none}
+.btn{display:block;width:100%;margin-top:16px;text-align:center;text-decoration:none;border:0;background:#a5b0ff;color:#101528;border-radius:11px;padding:12px;font:inherit;font-weight:600;cursor:pointer}
+.err{color:#ffc2cb}.ok{color:#bff0da}.hidden{display:none!important}
+</style></head><body>
+<div class="box">
+  <div class="brand">SOLIX</div>
+  <div id="view"><h2>Working…</h2><p>One moment.</p></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js";
+import { getAuth, applyActionCode, verifyPasswordResetCode, confirmPasswordReset }
+  from "https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js";
+
+const auth = getAuth(initializeApp({
+  apiKey: "AIzaSyBZSPQbFG-82_uTw_lOrHjqR0-e9HyLcMs",
+  authDomain: "solix-6f8a3.firebaseapp.com",
+  projectId: "solix-6f8a3",
+  appId: "1:2091737258:web:4686edb0a3db0f5a9370d3"
+}));
+
+// Where "Continue" sends people. "./" = the index page in this same folder.
+// If your login page is named solix-auth.html, change this to "solix-auth.html".
+const LOGIN = "./";
+
+const params = new URLSearchParams(location.search);
+const mode = params.get("mode"), code = params.get("oobCode");
+const view = document.getElementById("view");
+
+function done(title, text, ok = true, link = true) {
+  view.innerHTML = `<h2 class="${ok ? "ok" : "err"}">${title}</h2><p>${text}</p>` +
+    (link ? `<a class="btn" href="${LOGIN}">Continue to log in</a>` : "");
+}
+
+async function run() {
+  if (!mode || !code) return done("Invalid link", "This link is missing information. Request a new email from the login page.", false);
+
+  if (mode === "verifyEmail") {
+    try { await applyActionCode(auth, code); done("Email verified", "Your email is confirmed. You can now log in."); }
+    catch (e) { done("Link expired or already used", "If you already verified, just log in. Otherwise log in and use \"Resend email\".", false); }
+    return;
+  }
+
+  if (mode === "resetPassword") {
+    let email;
+    try { email = await verifyPasswordResetCode(auth, code); }
+    catch (e) { return done("Link expired or already used", "Request a new password reset from the login page.", false); }
+    view.innerHTML = `<h2>Reset password</h2><p>Choose a new password for <b>${email}</b>.</p>
+      <form id="f"><label for="pw">New password</label><input id="pw" type="password" minlength="8" autocomplete="new-password" required>
+      <button class="btn" type="submit">Save password</button><p id="m" style="margin-top:12px"></p></form>`;
+    document.getElementById("f").addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const pw = document.getElementById("pw").value, m = document.getElementById("m");
+      if (pw.length < 8) { m.className = "err"; m.textContent = "Use at least 8 characters."; return; }
+      try { await confirmPasswordReset(auth, code, pw); done("Password updated", "You can now log in with your new password."); }
+      catch (e) { m.className = "err"; m.textContent = "Could not reset: " + (e.code || e.message); }
+    });
+    return;
+  }
+
+  done("Unsupported link", "This type of link isn't handled here.", false);
+}
+run();
+</script>
+</body></html>
